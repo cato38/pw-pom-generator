@@ -44,8 +44,8 @@ flowchart LR
 
 > Already set up? Three steps.
 
-```powershell
-cd <path>\pw-backbone
+```bash
+cd <path>/pw-backbone
 claude
 ```
 
@@ -100,6 +100,57 @@ A browser opens and Claude replies `Example Domain`. ✅ Setup is done.
 
 </details>
 
+<details>
+<summary><b>🍎 First-time setup (macOS / Terminal)</b>: once per machine</summary>
+
+<br/>
+
+**1. Node.js 18+**: install the LTS version from https://nodejs.org (or `brew install node`), then check:
+```bash
+node -v
+```
+
+**2. Git** (Claude Code needs it): macOS asks to install the Command Line Tools the first time you run it. Check:
+```bash
+git --version
+```
+If it is missing, run `xcode-select --install`.
+
+**3. Claude Code**: install, then check:
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+claude --version
+```
+If `claude` is not found, open a new Terminal window and try again.
+
+**4. Log in** with your company Claude account:
+```bash
+claude
+```
+Inside Claude Code, run `/login`, choose **Claude account with subscription**, and sign in with your work email.
+Run `/status`. **Login method** should show your Team account. Exit with `/exit`.
+
+**5. Get the generator:**
+```bash
+git clone <repo-url> pw-backbone
+cd pw-backbone
+```
+
+**6. Register the Playwright MCP** inside the pw-backbone folder (no `cmd /c` on macOS):
+```bash
+claude mcp add playwright -- npx @playwright/mcp@latest
+claude mcp list
+```
+`playwright` should show **Connected**.
+
+**7. Test the browser.** Start `claude` and type:
+```
+Use the playwright MCP to open https://example.com and tell me the page title.
+```
+A browser opens and Claude replies `Example Domain`. ✅ Setup is done.
+
+</details>
+
 ## ✨ Generate a new project
 
 **1️⃣ Create the target folder** with only a `.env` file in it:
@@ -120,7 +171,7 @@ APP_PASS=your-password
 | Question | Answer |
 |---|---|
 | Mode | `NEW` |
-| Target folder | Absolute path, e.g. `C:\Users\<you>\Documents\GitHub\my-app-tests` |
+| Target folder | Absolute path, e.g. `C:\Users\<you>\Documents\GitHub\my-app-tests` (Windows) or `/Users/<you>/Documents/GitHub/my-app-tests` (macOS) |
 | Page limits | Default: depth 3, 30 pages |
 
 If Claude asks for access to the target folder, allow it (CLI: `/add-dir <target folder path>`).
