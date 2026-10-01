@@ -1,4 +1,4 @@
-# pw-backbone
+# pw-pom-generator
 
 A **generator** that creates and maintains Playwright TypeScript **Page Object Model** projects for web apps.
 Claude Code logs in with a generated auth script, crawls the app read-only with Playwright, then writes page objects, shared components, fixtures and smoke tests into a **target folder** you choose.
