@@ -222,7 +222,7 @@ async createUserWithDefaults() { /* your code */ }
 // MANUAL END
 ```
 
-Update runs also keep methods, assertions and tests they didn't generate. They rename an element only when its meaning has changed, and they list every rename in `UPDATE_REPORT.md`.
+Update runs also keep methods, assertions and tests they didn't generate. They only rename an element when its meaning has changed, and they list every rename in `UPDATE_REPORT.md`.
 
 ---
 
