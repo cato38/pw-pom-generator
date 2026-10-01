@@ -23,24 +23,20 @@ Then check the target:
 - Read only the BASE_URL line (e.g. grep "^BASE_URL=" .env)
 - Never read, print, or echo APP_USER / APP_PASS. Check they are set without showing them
   (e.g. grep -c "^APP_PASS=." .env)
-- Never write credentials into any generated file; code reads them from process.env only
+- Never write credentials into any generated file; code reads them from process.env only, through config/env.ts
 - NEVER ask for credentials in chat
 
 # Set up the target project (NEW mode only)
 - Scaffold a Playwright TypeScript project in the target folder, chromium only, no example tests:
   @playwright/test, typescript, @types/node, dotenv; then npx playwright install chromium
-- playwright.config.ts: load dotenv; use.baseURL = process.env.BASE_URL; projects:
-  - setup: testMatch /auth\.setup\.ts/
-  - chromium: dependencies ['setup'], use.storageState '.auth/state.json'
-- .gitignore must include: .env, .auth/, .crawl/output/, node_modules/, test-results/,
-  playwright-report/, blob-report/, playwright/.cache/
+- Create the files and folders listed in "Project structure" below (empty folders get no placeholder files)
 - Create .env.example with placeholders only: BASE_URL, APP_USER, APP_PASS
 - Run npx tsc --noEmit to confirm the setup works
 
 # Login (auth script + session file)
 Claude never types credentials into a browser itself and never sees their values.
 1. Open BASE_URL logged out (Playwright MCP or a script) and read the login form. Look only; do not type
-2. Generate tests/auth.setup.ts: fill APP_USER / APP_PASS from process.env, submit, wait for a
+2. Generate tests/setup/auth.setup.ts: fill env.user (APP_USER / APP_PASS via config/env.ts), submit, wait for a
    logged-in signal (URL leaves the login route or a logged-in-only element is visible), then save
    the session to .auth/state.json. Never log the credential values
 3. Run it: npx playwright test --project=setup
@@ -75,23 +71,104 @@ or to look at a page by hand.
 - CSS is the last resort; mark it with a // TODO: unstable locator comment
 - No XPath, no nth-child, no auto-generated class names
 
-# Output structure
-- pages/<PageName>Page.ts: one class per page, constructor(page: Page), readonly locators,
-  a goto() method, basic action methods (e.g. fillUsername, clickSave)
-- components/<Name>.ts: shared parts (header, sidebar, modals), used by pages
-- fixtures/pages.ts: extends Playwright test with all page objects as fixtures
-- tests/auth.setup.ts: logs in and saves .auth/state.json (see Login)
-- tests/smoke/<page>.spec.ts: open the page, assert its key elements are visible
-- .crawl/crawl.mjs, .crawl/verify.mjs: crawl helpers (output in .crawl/output/, git-ignored)
-- CRAWL_REPORT.md: list of pages found, elements with no stable locator, pages skipped and why
+# Project structure
+Goal: a small, predictable backbone. One place for each kind of thing, one way to import it.
+```
+<target>/
+├── config/
+│   └── env.ts                    the ONLY file that reads process.env (typed, fails fast)
+├── pages/
+│   ├── base.page.ts              BasePage: page, url, goto(), expectLoaded(), shared helpers
+│   └── <name>.page.ts            one class per page, extends BasePage
+├── components/
+│   └── <name>.component.ts       shared UI parts (header, sidebar, modal, table)
+├── fixtures/
+│   └── index.ts                  the ONLY `test` / `expect` that specs import
+├── tests/
+│   ├── setup/auth.setup.ts       logs in, saves .auth/state.json
+│   ├── smoke/<name>.spec.ts      generated: page opens, key elements visible
+│   └── e2e/<feature>/*.spec.ts   manual user-flow tests (generator never writes here)
+├── data/                         static test data (no secrets), e.g. users.data.ts
+├── utils/                        pure helpers with no page knowledge (dates, downloads, random)
+├── .crawl/                       crawl.mjs, verify.mjs (output/ is git-ignored)
+├── playwright.config.ts
+├── tsconfig.json
+├── package.json
+├── .env / .env.example
+├── .gitignore
+├── README.md
+└── CRAWL_REPORT.md / UPDATE_REPORT.md
+```
+
+## Dependency direction (never import upwards)
+tests -> fixtures -> pages -> components -> base.page / utils / config
+- Specs never import from @playwright/test, pages, or config directly; everything comes from fixtures/index.ts
+- Pages never import specs or fixtures; components never import pages
+- Only config/env.ts touches process.env (except playwright.config.ts loading dotenv)
+
+## config/env.ts
+- Exports one `env` object: baseURL, user { username, password } from BASE_URL / APP_USER / APP_PASS
+- A required() helper throws a clear error naming the missing variable (never its value)
+- No hard-coded URLs, no per-environment files. Another environment = another .env file
+  (optional ENV_FILE variable picks it in playwright.config.ts)
+
+## pages/
+- File: kebab-case `<name>.page.ts`; class: PascalCase + Page (`users-list.page.ts` -> UsersListPage)
+- Every page extends BasePage and sets `readonly url` (relative to baseURL); BasePage.goto() uses it
+- Class layout, always in this order, separated by one-line section comments:
+  1. `// Locators` readonly Locator fields
+  2. `// Components` readonly component instances (header, sidebar) if the page has them
+  3. constructor(page: Page): super(page), then assigns locators in the same order as declared
+  4. `// Actions` small methods named for intent: search(text), openUser(name), clickSave()
+  5. `// Assertions` only expectLoaded() (checks the page's key element); other expects stay in specs
+- No test logic, no hard waits (waitForTimeout), no credentials, no try/catch around locators
+- Methods return Promise<void>, or a value the test needs; navigation methods may return the next page object
+
+## components/
+- File: `<name>.component.ts`; class: PascalCase + Component (HeaderComponent)
+- constructor(page: Page) or constructor(root: Locator) for repeated parts; locators are scoped to the root
+- Create a component only when the part appears on 2+ pages; otherwise keep it in the page
+
+## fixtures/index.ts
+- One `base.extend<Fixtures>()` that registers every page object as a camelCase fixture (usersListPage)
+- Re-exports `expect`. New page = one new line in the Fixtures type + one fixture entry
+- Specs: `import { test, expect } from '@fixtures';`
+
+## tests/
+- setup/auth.setup.ts: see Login. Uses env from config, nothing else
+- smoke/<name>.spec.ts: one file per page, one `test.describe('<PageName>')`, tagged @smoke:
+  goto(), expectLoaded(), then toBeVisible() on its key elements. Nothing that changes data
+- e2e/: owned by the user. Tag tests @regression (plus a feature tag like @users)
+- Test titles describe behaviour: 'shows the users table', not 'test 1'
+
+## Config files
+- tsconfig.json: strict, noEmit, paths aliases `@pages/*`, `@components/*`, `@fixtures`, `@config/*`,
+  `@data/*`, `@utils/*` (no ../../ imports between top-level folders)
+- playwright.config.ts: load dotenv first; testDir ./tests; fullyParallel; forbidOnly on CI;
+  retries 2 on CI / 0 local; reporter list + html (open: 'never'); use.baseURL = env.baseURL,
+  trace 'on-first-retry', screenshot 'only-on-failure', video 'retain-on-failure'; projects:
+  - setup: testMatch /auth\.setup\.ts/
+  - chromium: devices['Desktop Chrome'], dependencies ['setup'], use.storageState '.auth/state.json'
+- .gitignore: .env, .env.*, !.env.example, .auth/, .crawl/output/, node_modules/, test-results/,
+  playwright-report/, blob-report/, playwright/.cache/
+- package.json scripts: "test", "test:smoke" (--grep @smoke), "test:regression" (--grep @regression),
+  "test:ui" (--ui), "typecheck" (tsc --noEmit), "auth" (--project=setup), "report" (show-report)
+
+## Docs
 - README.md: what the project covers, setup (.env), how to run tests, folder structure,
-  the MANUAL START/END rule. Short and scannable.
-- package.json scripts: "test", "test:smoke", "test:ui", "typecheck", "auth" (runs the setup project)
+  the MANUAL START/END rule. Short and scannable
+- CRAWL_REPORT.md: pages found, elements with no stable locator, pages skipped and why
+
+## Not in the backbone (add only when the user asks)
+API layer (api/clients, api/services, api/types), other browsers, custom reporters/webhooks,
+Docker, CI pipeline files, multiple environment files
 
 # Naming
 - Meaningful names based on visible text or purpose: loginButton, searchInput, usersTable
 - Never generic names like button1, input3
-- Page class names from the page title or route: /users/list -> UsersListPage
+- Suffix locators with their role: Button, Link, Input, Select, Checkbox, Table, Heading, Dialog
+- Page names from the page title or route: /users/list -> users-list.page.ts / UsersListPage / usersListPage
+- Files kebab-case, classes PascalCase, fixtures/methods/locators camelCase
 
 # When done
 - Run npx tsc --noEmit and fix any type errors
@@ -111,6 +188,10 @@ or to look at a page by hand.
 4. Page no longer reachable -> do NOT delete files; list it in the report
 5. Run npx tsc --noEmit and the smoke tests (--project=chromium); fix what the update broke
 6. Update README.md if the structure changed
+
+## Existing structure
+- If the project does not follow "Project structure" (e.g. older PascalCase files), keep its
+  conventions for new files and list the differences in the report. Restructure only if the user asks
 
 ## Protect manual work
 - Never delete or rewrite methods, assertions, or tests that were not generated by you
